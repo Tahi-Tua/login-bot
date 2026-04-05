@@ -194,9 +194,12 @@ def health():
 def run_bot():
     bot.infinity_polling()
 
-# Démarrer le bot au lancement de l'app (fonctionne avec uvicorn CLI et __main__)
+# Démarrer le bot au lancement de l'app uniquement si RUN_TELEGRAM_BOT=true
 @app.on_event("startup")
 def on_startup():
+    if os.environ.get("RUN_TELEGRAM_BOT", "false").lower() != "true":
+        return
+
     global bot_started
 
     with bot_start_lock:
