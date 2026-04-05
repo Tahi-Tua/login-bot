@@ -13,6 +13,10 @@
 .field public static final STATUS_VALID:I = 0x1
 .field public static final STATUS_EXPIRED:I = -0x1
 .field public static final STATUS_ERROR:I = -0x2
+.field public static final STATUS_MAX_DEVICES:I = -0x3
+
+# Last device_token from successful activation
+.field private static sLastDeviceToken:Ljava/lang/String;
 
 .method public constructor <init>()V
     .registers 1
@@ -124,33 +128,33 @@
     return v0
 .end method
 
-# Main validation entry point with nonce + HMAC
-.method public static validateKeyBlocking(Ljava/lang/String;)I
-    .registers 9
+# Get last device_token from successful activation
+.method public static getLastDeviceToken()Ljava/lang/String;
+    .registers 1
+    sget-object v0, Lcom/example/auth/KeyValidationManager;->sLastDeviceToken:Ljava/lang/String;
+    return-object v0
+.end method
 
-    # p0 = key
+# Device activation: key + device_id -> device_token via /api/activate
+# Returns STATUS_VALID(1) on success (device_token in sLastDeviceToken)
+.method public static activateDeviceBlocking(Ljava/lang/String;Ljava/lang/String;)I
+    .registers 12
+
+    # p0 = key, p1 = deviceId
 
     # ---- Environment guard ----
     invoke-static {}, Lcom/example/auth/EnvironmentGuard;->isSafe()Z
-
     move-result v0
-
     if-nez v0, :env_ok
-
     const/4 v0, -0x2
-
     return v0
 
     :env_ok
     # ---- Format check ----
     invoke-static {p0}, Lcom/example/auth/KeyValidationManager;->isKeyFormatValid(Ljava/lang/String;)Z
-
     move-result v0
-
     if-nez v0, :format_ok
-
     const/4 v0, 0x0
-
     return v0
 
     :format_ok
@@ -158,149 +162,124 @@
 
     # ---- Step 1: Fetch nonce ----
     invoke-static {}, Lcom/example/auth/KeyValidationManager;->getBaseUrl()Ljava/lang/String;
-
     move-result-object v1
 
     new-instance v2, Ljava/lang/StringBuilder;
-
     invoke-direct {v2}, Ljava/lang/StringBuilder;-><init>()V
-
     invoke-virtual {v2, v1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-
     const-string v3, "nonce"
-
     invoke-virtual {v2, v3}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-
     invoke-virtual {v2}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
-
     move-result-object v2
 
     invoke-static {v2}, Lcom/example/auth/KeyValidationManager;->httpGet(Ljava/lang/String;)Ljava/lang/String;
-
     move-result-object v3
-
     if-eqz v3, :error
 
     const-string v7, "nonce"
-
     invoke-static {v3, v7}, Lcom/example/auth/KeyValidationManager;->extractJsonValue(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
-
     move-result-object v4
-
     if-eqz v4, :error
 
-    # ---- Step 2: Verify with nonce ----
+    # ---- Step 2: Call /api/activate ----
     invoke-static {p0}, Landroid/net/Uri;->encode(Ljava/lang/String;)Ljava/lang/String;
-
     move-result-object v7
 
-    invoke-static {}, Lcom/example/auth/KeyValidationManager;->getBaseUrl()Ljava/lang/String;
+    invoke-static {p1}, Landroid/net/Uri;->encode(Ljava/lang/String;)Ljava/lang/String;
+    move-result-object v8
 
+    invoke-static {}, Lcom/example/auth/KeyValidationManager;->getBaseUrl()Ljava/lang/String;
     move-result-object v1
 
     new-instance v2, Ljava/lang/StringBuilder;
-
     invoke-direct {v2}, Ljava/lang/StringBuilder;-><init>()V
-
     invoke-virtual {v2, v1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-
-    const-string v3, "verify?key="
-
+    const-string v3, "activate?key="
     invoke-virtual {v2, v3}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-
     invoke-virtual {v2, v7}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-
     const-string v3, "&nonce="
-
     invoke-virtual {v2, v3}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-
     invoke-virtual {v2, v4}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
-
+    const-string v3, "&device_id="
+    invoke-virtual {v2, v3}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    invoke-virtual {v2, v8}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
     invoke-virtual {v2}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
-
     move-result-object v2
 
     invoke-static {v2}, Lcom/example/auth/KeyValidationManager;->httpGet(Ljava/lang/String;)Ljava/lang/String;
-
     move-result-object v3
-
     if-eqz v3, :error
 
     # ---- Step 3: Parse response ----
     const-string v7, "status"
-
     invoke-static {v3, v7}, Lcom/example/auth/KeyValidationManager;->extractJsonValue(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
-
     move-result-object v5
-
     if-eqz v5, :error
 
     const-string v7, "sig"
-
     invoke-static {v3, v7}, Lcom/example/auth/KeyValidationManager;->extractJsonValue(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
-
     move-result-object v6
-
     if-eqz v6, :error
 
     # ---- Step 4: Verify HMAC signature ----
     invoke-static {v4, v5, v6}, Lcom/example/auth/KeyValidationManager;->verifySignature(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Z
-
     move-result v0
-
     if-nez v0, :sig_ok
-
     const/4 v0, -0x2
-
     return v0
 
     :sig_ok
     # ---- Step 5: Redundant environment check ----
     invoke-static {}, Lcom/example/auth/EnvironmentGuard;->isSafe()Z
-
     move-result v0
-
     if-nez v0, :env_ok2
-
     const/4 v0, -0x2
-
     return v0
 
     :env_ok2
     # ---- Step 6: Parse status ----
-    const-string v7, "valid"
-
+    const-string v7, "activated"
     invoke-virtual {v5, v7}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
-
     move-result v0
-
     if-eqz v0, :check_expired
 
-    const/4 v0, 0x1
+    # Extract device_token and store it
+    const-string v7, "device_token"
+    invoke-static {v3, v7}, Lcom/example/auth/KeyValidationManager;->extractJsonValue(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+    move-result-object v9
+    sput-object v9, Lcom/example/auth/KeyValidationManager;->sLastDeviceToken:Ljava/lang/String;
 
+    const/4 v0, 0x1
     return v0
 
     :check_expired
     const-string v7, "expired"
-
     invoke-virtual {v5, v7}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
-
     move-result v0
-
-    if-eqz v0, :is_invalid
-
+    if-eqz v0, :check_max_devices
     const/4 v0, -0x1
+    return v0
 
+    :check_max_devices
+    # Check reason for max_devices
+    const-string v7, "reason"
+    invoke-static {v3, v7}, Lcom/example/auth/KeyValidationManager;->extractJsonValue(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+    move-result-object v9
+    if-eqz v9, :is_invalid
+
+    const-string v7, "max_devices"
+    invoke-virtual {v9, v7}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
+    move-result v0
+    if-eqz v0, :is_invalid
+    const/4 v0, -0x3
     return v0
 
     :is_invalid
     const/4 v0, 0x0
-
     return v0
 
     :error
     const/4 v0, -0x2
-
     return v0
 
     :try_end
@@ -308,8 +287,137 @@
 
     :catch
     const/4 v0, -0x2
-
     return v0
+.end method
+
+# Check device token validity via /api/check (periodic server call)
+# Returns STATUS_VALID(1), STATUS_INVALID(0), STATUS_EXPIRED(-1), STATUS_ERROR(-2)
+.method public static checkDeviceBlocking(Ljava/lang/String;)I
+    .registers 9
+
+    # p0 = deviceToken
+
+    if-eqz p0, :error
+
+    invoke-virtual {p0}, Ljava/lang/String;->length()I
+    move-result v0
+    const/16 v1, 0x10
+    if-lt v0, v1, :error
+
+    :try_start
+
+    # ---- Step 1: Fetch nonce ----
+    invoke-static {}, Lcom/example/auth/KeyValidationManager;->getBaseUrl()Ljava/lang/String;
+    move-result-object v1
+
+    new-instance v2, Ljava/lang/StringBuilder;
+    invoke-direct {v2}, Ljava/lang/StringBuilder;-><init>()V
+    invoke-virtual {v2, v1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    const-string v3, "nonce"
+    invoke-virtual {v2, v3}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    invoke-virtual {v2}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
+    move-result-object v2
+
+    invoke-static {v2}, Lcom/example/auth/KeyValidationManager;->httpGet(Ljava/lang/String;)Ljava/lang/String;
+    move-result-object v3
+    if-eqz v3, :error
+
+    const-string v7, "nonce"
+    invoke-static {v3, v7}, Lcom/example/auth/KeyValidationManager;->extractJsonValue(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+    move-result-object v4
+    if-eqz v4, :error
+
+    # ---- Step 2: Call /api/check ----
+    invoke-static {p0}, Landroid/net/Uri;->encode(Ljava/lang/String;)Ljava/lang/String;
+    move-result-object v7
+
+    invoke-static {}, Lcom/example/auth/KeyValidationManager;->getBaseUrl()Ljava/lang/String;
+    move-result-object v1
+
+    new-instance v2, Ljava/lang/StringBuilder;
+    invoke-direct {v2}, Ljava/lang/StringBuilder;-><init>()V
+    invoke-virtual {v2, v1}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    const-string v3, "check?device_token="
+    invoke-virtual {v2, v3}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    invoke-virtual {v2, v7}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    const-string v3, "&nonce="
+    invoke-virtual {v2, v3}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    invoke-virtual {v2, v4}, Ljava/lang/StringBuilder;->append(Ljava/lang/String;)Ljava/lang/StringBuilder;
+    invoke-virtual {v2}, Ljava/lang/StringBuilder;->toString()Ljava/lang/String;
+    move-result-object v2
+
+    invoke-static {v2}, Lcom/example/auth/KeyValidationManager;->httpGet(Ljava/lang/String;)Ljava/lang/String;
+    move-result-object v3
+    if-eqz v3, :error
+
+    # ---- Step 3: Parse response ----
+    const-string v7, "status"
+    invoke-static {v3, v7}, Lcom/example/auth/KeyValidationManager;->extractJsonValue(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+    move-result-object v5
+    if-eqz v5, :error
+
+    const-string v7, "sig"
+    invoke-static {v3, v7}, Lcom/example/auth/KeyValidationManager;->extractJsonValue(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+    move-result-object v6
+    if-eqz v6, :error
+
+    # ---- Step 4: Verify HMAC signature ----
+    invoke-static {v4, v5, v6}, Lcom/example/auth/KeyValidationManager;->verifySignature(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Z
+    move-result v0
+    if-nez v0, :sig_ok
+    const/4 v0, -0x2
+    return v0
+
+    :sig_ok
+    # ---- Step 5: Parse status ----
+    const-string v7, "valid"
+    invoke-virtual {v5, v7}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
+    move-result v0
+    if-eqz v0, :check_expired
+    const/4 v0, 0x1
+    return v0
+
+    :check_expired
+    const-string v7, "expired"
+    invoke-virtual {v5, v7}, Ljava/lang/String;->equals(Ljava/lang/Object;)Z
+    move-result v0
+    if-eqz v0, :is_invalid
+    const/4 v0, -0x1
+    return v0
+
+    :is_invalid
+    const/4 v0, 0x0
+    return v0
+
+    :error
+    const/4 v0, -0x2
+    return v0
+
+    :try_end
+    .catch Ljava/lang/Exception; {:try_start .. :try_end} :catch
+
+    :catch
+    const/4 v0, -0x2
+    return v0
+.end method
+
+# Get ANDROID_ID as device identifier
+.method public static getDeviceId(Landroid/content/Context;)Ljava/lang/String;
+    .registers 4
+
+    invoke-virtual {p0}, Landroid/content/Context;->getContentResolver()Landroid/content/ContentResolver;
+    move-result-object v0
+
+    const-string v1, "android_id"
+
+    invoke-static {v0, v1}, Landroid/provider/Settings$Secure;->getString(Landroid/content/ContentResolver;Ljava/lang/String;)Ljava/lang/String;
+    move-result-object v2
+
+    if-nez v2, :has_id
+    const-string v2, "unknown"
+
+    :has_id
+    return-object v2
 .end method
 
 # HTTP GET helper - returns response body or null

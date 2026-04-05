@@ -194,7 +194,7 @@
     return-void
 .end method
 
-# Clear session data
+# Clear session data (including device_token)
 .method public static clearSession(Landroid/content/Context;)V
     .registers 5
 
@@ -224,7 +224,149 @@
 
     move-result-object v3
 
+    const-string v0, "_c2"
+
+    invoke-interface {v3, v0}, Landroid/content/SharedPreferences$Editor;->remove(Ljava/lang/String;)Landroid/content/SharedPreferences$Editor;
+
+    move-result-object v3
+
     invoke-interface {v3}, Landroid/content/SharedPreferences$Editor;->apply()V
 
     return-void
+.end method
+
+# Save device_token (XOR encrypted with obfuscation key, Base64 encoded)
+.method public static saveDeviceToken(Landroid/content/Context;Ljava/lang/String;)V
+    .registers 10
+
+    # p0 = context, p1 = deviceToken
+    if-eqz p1, :done
+
+    # Get obfuscation key
+    invoke-static {p0}, Lcom/example/auth/SessionStore;->getObfKey(Landroid/content/Context;)J
+    move-result-wide v0
+    # v0/v1 = obfKey (long)
+
+    # Convert token to bytes
+    const-string v2, "UTF-8"
+    invoke-virtual {p1, v2}, Ljava/lang/String;->getBytes(Ljava/lang/String;)[B
+    move-result-object v3
+    # v3 = token bytes
+
+    # XOR encrypt each byte with key bytes (cycling through 8 bytes of long)
+    array-length v4, v3
+    const/4 v5, 0x0
+
+    :xor_loop
+    if-ge v5, v4, :xor_done
+
+    # Get key byte: shift obfKey right by (i % 8) * 8, mask with 0xFF
+    rem-int/lit8 v6, v5, 0x8
+    mul-int/lit8 v6, v6, 0x8
+    shr-long v7, v0, v6
+    long-to-int v7, v7
+    and-int/lit16 v7, v7, 0xFF
+
+    # XOR with data byte
+    aget-byte v8, v3, v5
+    xor-int/2addr v8, v7
+    int-to-byte v8, v8
+    aput-byte v8, v3, v5
+
+    add-int/lit8 v5, v5, 0x1
+    goto :xor_loop
+
+    :xor_done
+    # Base64 encode (NO_WRAP = 2)
+    const/4 v5, 0x2
+    invoke-static {v3, v5}, Landroid/util/Base64;->encodeToString([BI)Ljava/lang/String;
+    move-result-object v6
+
+    # Store in SharedPreferences
+    const-string v7, "_sys_cfg"
+    const/4 v8, 0x0
+    invoke-virtual {p0, v7, v8}, Landroid/content/Context;->getSharedPreferences(Ljava/lang/String;I)Landroid/content/SharedPreferences;
+    move-result-object v7
+
+    invoke-interface {v7}, Landroid/content/SharedPreferences;->edit()Landroid/content/SharedPreferences$Editor;
+    move-result-object v7
+
+    const-string v8, "_c2"
+    invoke-interface {v7, v8, v6}, Landroid/content/SharedPreferences$Editor;->putString(Ljava/lang/String;Ljava/lang/String;)Landroid/content/SharedPreferences$Editor;
+    move-result-object v7
+
+    invoke-interface {v7}, Landroid/content/SharedPreferences$Editor;->apply()V
+
+    :done
+    return-void
+.end method
+
+# Get device_token (decrypt from storage)
+.method public static getDeviceToken(Landroid/content/Context;)Ljava/lang/String;
+    .registers 10
+
+    # p0 = context
+
+    # Read from SharedPreferences
+    const-string v0, "_sys_cfg"
+    const/4 v1, 0x0
+    invoke-virtual {p0, v0, v1}, Landroid/content/Context;->getSharedPreferences(Ljava/lang/String;I)Landroid/content/SharedPreferences;
+    move-result-object v2
+
+    const-string v3, "_c2"
+    const/4 v4, 0x0
+    invoke-interface {v2, v3, v4}, Landroid/content/SharedPreferences;->getString(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+    move-result-object v5
+
+    if-nez v5, :has_token
+    const/4 v0, 0x0
+    return-object v0
+
+    :has_token
+    :try_start
+    # Base64 decode
+    const/4 v6, 0x0
+    invoke-static {v5, v6}, Landroid/util/Base64;->decode(Ljava/lang/String;I)[B
+    move-result-object v3
+    # v3 = encrypted bytes
+
+    # Get obfuscation key
+    invoke-static {p0}, Lcom/example/auth/SessionStore;->getObfKey(Landroid/content/Context;)J
+    move-result-wide v0
+    # v0/v1 = obfKey
+
+    # XOR decrypt (same as encrypt)
+    array-length v4, v3
+    const/4 v5, 0x0
+
+    :dec_loop
+    if-ge v5, v4, :dec_done
+
+    rem-int/lit8 v6, v5, 0x8
+    mul-int/lit8 v6, v6, 0x8
+    shr-long v7, v0, v6
+    long-to-int v7, v7
+    and-int/lit16 v7, v7, 0xFF
+
+    aget-byte v8, v3, v5
+    xor-int/2addr v8, v7
+    int-to-byte v8, v8
+    aput-byte v8, v3, v5
+
+    add-int/lit8 v5, v5, 0x1
+    goto :dec_loop
+
+    :dec_done
+    # Convert back to String
+    new-instance v6, Ljava/lang/String;
+    const-string v7, "UTF-8"
+    invoke-direct {v6, v3, v7}, Ljava/lang/String;-><init>([BLjava/lang/String;)V
+    return-object v6
+
+    :try_end
+    .catch Ljava/lang/Exception; {:try_start .. :try_end} :catch
+
+    :catch
+    const/4 v0, 0x0
+    return-object v0
 .end method

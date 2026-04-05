@@ -19,24 +19,23 @@
 
     # Environment guard - if not safe, always show overlay
     invoke-static {}, Lcom/example/auth/EnvironmentGuard;->isSafe()Z
-
     move-result v0
+    if-eqz v0, :show_overlay
 
+    # Integrity check (APK signature + DEX CRC)
+    invoke-static {p0}, Lcom/example/auth/IntegrityChecker;->isIntact(Landroid/content/Context;)Z
+    move-result v0
     if-eqz v0, :show_overlay
 
     invoke-static {p0}, Lcom/example/auth/SessionStore;->hasValidSession(Landroid/content/Context;)Z
-
     move-result v0
-
     if-eqz v0, :show_overlay
 
     invoke-virtual {p0}, Lcom/example/auth/OverlayActivity;->finish()V
-
     return-void
 
     :show_overlay
     invoke-direct {p0}, Lcom/example/auth/OverlayActivity;->buildUi()V
-
     return-void
 .end method
 
@@ -362,26 +361,31 @@
     return-void
 
     :validate
-    const-string v5, "Checking key..."
+    const-string v5, "Activating..."
 
     const-string v6, "#93C5FD"
 
     invoke-direct {p0, v5, v6}, Lcom/example/auth/OverlayActivity;->setStatus(Ljava/lang/String;Ljava/lang/String;)V
 
-    invoke-direct {p0, v1}, Lcom/example/auth/OverlayActivity;->performValidationAsync(Ljava/lang/String;)V
+    # Get device ID
+    invoke-static {p0}, Lcom/example/auth/KeyValidationManager;->getDeviceId(Landroid/content/Context;)Ljava/lang/String;
+    move-result-object v7
+
+    invoke-direct {p0, v1, v7}, Lcom/example/auth/OverlayActivity;->performValidationAsync(Ljava/lang/String;Ljava/lang/String;)V
 
     return-void
 
 .end method
 
-.method private performValidationAsync(Ljava/lang/String;)V
-    .registers 5
+.method private performValidationAsync(Ljava/lang/String;Ljava/lang/String;)V
+    .registers 6
 
+    # p1 = key, p2 = deviceId
     new-instance v0, Ljava/lang/Thread;
 
     new-instance v1, Lcom/example/auth/OverlayActivity$2;
 
-    invoke-direct {v1, p0, p1}, Lcom/example/auth/OverlayActivity$2;-><init>(Lcom/example/auth/OverlayActivity;Ljava/lang/String;)V
+    invoke-direct {v1, p0, p1, p2}, Lcom/example/auth/OverlayActivity$2;-><init>(Lcom/example/auth/OverlayActivity;Ljava/lang/String;Ljava/lang/String;)V
 
     invoke-direct {v0, v1}, Ljava/lang/Thread;-><init>(Ljava/lang/Runnable;)V
 
@@ -401,64 +405,73 @@
 
     # Redundant environment check before granting access
     invoke-static {}, Lcom/example/auth/EnvironmentGuard;->isSafe()Z
-
     move-result v2
+    if-nez v2, :env_ok
 
+    const-string v3, "Security check failed"
+    const-string v4, "#FCA5A5"
+    invoke-direct {p0, v3, v4}, Lcom/example/auth/OverlayActivity;->setStatus(Ljava/lang/String;Ljava/lang/String;)V
+    return-void
+
+    :env_ok
+    # Integrity check before granting access
+    invoke-static {p0}, Lcom/example/auth/IntegrityChecker;->isIntact(Landroid/content/Context;)Z
+    move-result v2
     if-nez v2, :grant_access
 
     const-string v3, "Security check failed"
-
     const-string v4, "#FCA5A5"
-
     invoke-direct {p0, v3, v4}, Lcom/example/auth/OverlayActivity;->setStatus(Ljava/lang/String;Ljava/lang/String;)V
-
     return-void
 
     :grant_access
+    # Save session (24h)
     const v2, 0x15180
-
     invoke-static {p0, v2}, Lcom/example/auth/SessionStore;->saveSession(Landroid/content/Context;I)V
 
+    # Save device_token from last activation
+    invoke-static {}, Lcom/example/auth/KeyValidationManager;->getLastDeviceToken()Ljava/lang/String;
+    move-result-object v2
+    if-eqz v2, :skip_token
+    invoke-static {p0, v2}, Lcom/example/auth/SessionStore;->saveDeviceToken(Landroid/content/Context;Ljava/lang/String;)V
+
+    :skip_token
     const-string v3, "Access granted"
-
     const-string v4, "#86EFAC"
-
     invoke-direct {p0, v3, v4}, Lcom/example/auth/OverlayActivity;->setStatus(Ljava/lang/String;Ljava/lang/String;)V
 
     invoke-virtual {p0}, Lcom/example/auth/OverlayActivity;->finish()V
-
     return-void
 
     :check_expired
     const/4 v1, -0x1
-
-    if-ne v0, v1, :check_invalid
+    if-ne v0, v1, :check_max_devices
 
     const-string v3, "Key expired. Request a new key."
-
     const-string v4, "#FCA5A5"
-
     invoke-direct {p0, v3, v4}, Lcom/example/auth/OverlayActivity;->setStatus(Ljava/lang/String;Ljava/lang/String;)V
+    return-void
 
+    :check_max_devices
+    const/4 v1, -0x3
+    if-ne v0, v1, :check_invalid
+
+    const-string v3, "Max devices reached for this key."
+    const-string v4, "#FCA5A5"
+    invoke-direct {p0, v3, v4}, Lcom/example/auth/OverlayActivity;->setStatus(Ljava/lang/String;Ljava/lang/String;)V
     return-void
 
     :check_invalid
     if-nez v0, :network_fail
 
     const-string v3, "Invalid key"
-
     const-string v4, "#FCA5A5"
-
     invoke-direct {p0, v3, v4}, Lcom/example/auth/OverlayActivity;->setStatus(Ljava/lang/String;Ljava/lang/String;)V
-
     return-void
 
     :network_fail
     const-string v3, "Network error. Try again."
-
     const-string v4, "#FDE68A"
-
     invoke-direct {p0, v3, v4}, Lcom/example/auth/OverlayActivity;->setStatus(Ljava/lang/String;Ljava/lang/String;)V
-
     return-void
 .end method
