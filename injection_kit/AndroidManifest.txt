@@ -8,20 +8,12 @@ Ajouter dans <manifest> AVANT <application> :
 
     <uses-permission android:name="android.permission.INTERNET"/>
 
-
-ÉTAPE 2 : Activer le trafic HTTP (obligatoire Android 9+)
------------------------------------------------------------
-Dans la balise <application>, ajouter cet attribut :
-
-    android:usesCleartextTraffic="true"
-
-Exemple :
-    <application android:allowBackup="true" ... android:usesCleartextTraffic="true">
-
-Sans cet attribut, Android bloque les requêtes HTTP et l'app affiche "Network error".
+Note : android.permission.INTERNET est la seule permission requise.
+Settings.Secure.ANDROID_ID (utilisé pour le device_id) ne nécessite
+aucune permission supplémentaire.
 
 
-ÉTAPE 3 : Ajouter l'OverlayActivity
+ÉTAPE 2 : Ajouter l'OverlayActivity
 -------------------------------------
 Ajouter DANS <application> (avant </application>) :
 
